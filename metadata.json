@@ -1,0 +1,7 @@
+{
+  "name": "ระบบฐานข้อมูลสุขภาพพระสงฆ์",
+  "description": "ระบบบันทึกผลตรวจสุขภาพพระสงฆ์ประจำปี แดชบอร์ดสรุปสถิติ รายงานสุขภาพ และเปรียบเทียบผลตรวจย้อนหลังระหว่างปี",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
