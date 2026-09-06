@@ -32,11 +32,11 @@ const MainContent: React.FC = () => {
     }
   }, [isAuthLoading, currentUser]);
 
-  // Route / Render guard: If region_admin reaches a disallowed tab (health_entry, temple_management),
+  // Route / Render guard: If neither super_admin nor region_admin reaches temple_management,
   // immediately redirect active tab to dashboard
   useEffect(() => {
-    if (currentUser?.role === 'region_admin') {
-      if (activeTab === 'health_entry' || activeTab === 'temple_management') {
+    if (currentUser && currentUser.role !== 'super_admin' && currentUser.role !== 'region_admin') {
+      if (activeTab === 'temple_management') {
         setActiveTab('dashboard');
       }
     }
@@ -79,15 +79,16 @@ const MainContent: React.FC = () => {
           {/* Dynamic Main Workspace */}
           <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto min-w-0">
             {activeTab === 'dashboard' && <DashboardView />}
-            {activeTab === 'health_entry' && currentUser.role !== 'region_admin' && <HealthEntryView />}
+            {activeTab === 'health_entry' && <HealthEntryView />}
             {activeTab === 'monk_list' && <MonkListView />}
             {activeTab === 'monk_detail' && <MonkDetailView />}
             {activeTab === 'yearly_comparison' && <YearlyComparisonView />}
             {activeTab === 'reports' && <ReportsView />}
             {activeTab === 'guide' && <GuideView />}
-            {activeTab === 'temple_management' && currentUser.role === 'super_admin' && (
-              <TempleManagementView />
-            )}
+            {activeTab === 'temple_management' &&
+              (currentUser.role === 'super_admin' || currentUser.role === 'region_admin') && (
+                <TempleManagementView />
+              )}
           </main>
         </div>
       ) : (

@@ -60,6 +60,16 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/temples/$(templeId)).data;
     }
 
+    // Helper to check if a referenced monk document exists
+    function monkExists(monkId) {
+      return exists(/databases/$(database)/documents/monks/$(monkId));
+    }
+
+    // Helper to fetch referenced monk data
+    function getMonkData(monkId) {
+      return get(/databases/$(database)/documents/monks/$(monkId)).data;
+    }
+
     // Validation helper for region_admin creating a monk:
     // 1. request.resource.data.region9 == userAssignedRegion()
     // 2. request.resource.data.templeId exists and is string
@@ -92,6 +102,77 @@ service cloud.firestore {
         templeExists(request.resource.data.templeId) &&
         getTempleData(request.resource.data.templeId).get('region9', '') == userAssignedRegion() &&
         getTempleData(request.resource.data.templeId).get('status', '') == 'approved';
+    }
+
+    // Validation helper for temple_admin creating a healthCheck:
+    // 1. request.resource.data.monkId exists and is string
+    // 2. referenced monks/{monkId} exists
+    // 3. referenced monk.templeId == userTempleId()
+    // 4. request.resource.data.templeId == userTempleId()
+    function isValidTempleAdminHealthCheckCreate() {
+      return isTempleAdmin() &&
+        'monkId' in request.resource.data &&
+        request.resource.data.monkId is string &&
+        request.resource.data.monkId != '' &&
+        monkExists(request.resource.data.monkId) &&
+        getMonkData(request.resource.data.monkId).get('templeId', '') == userTempleId() &&
+        request.resource.data.get('templeId', '') == userTempleId();
+    }
+
+    // Validation helper for region_admin creating a healthCheck for their own temple:
+    // 1. request.resource.data.templeId == userTempleId()
+    // 2. request.resource.data.region9 == userAssignedRegion()
+    // 3. referenced own temple exists and belongs to userAssignedRegion
+    // 4. request.resource.data.monkId exists and is string
+    // 5. referenced monk exists
+    // 6. referenced monk.templeId == userTempleId()
+    // 7. referenced monk.region9 == userAssignedRegion()
+    function isValidRegionAdminHealthCheckCreate() {
+      return isRegionAdmin() &&
+        request.resource.data.get('templeId', '') == userTempleId() &&
+        request.resource.data.get('region9', '') == userAssignedRegion() &&
+        templeExists(userTempleId()) &&
+        getTempleData(userTempleId()).get('region9', '') == userAssignedRegion() &&
+        'monkId' in request.resource.data &&
+        request.resource.data.monkId is string &&
+        request.resource.data.monkId != '' &&
+        monkExists(request.resource.data.monkId) &&
+        getMonkData(request.resource.data.monkId).get('templeId', '') == userTempleId() &&
+        getMonkData(request.resource.data.monkId).get('region9', '') == userAssignedRegion();
+    }
+
+    // Validation helper for temple_admin updating a healthCheck for their own temple:
+    // 1. existing resource.data.templeId == userTempleId()
+    // 2. new request.resource.data.templeId == userTempleId()
+    // 3. monkId must remain unchanged
+    // 4. referenced monk exists and monk.templeId == userTempleId()
+    function isValidTempleAdminHealthCheckUpdate() {
+      return isTempleAdmin() &&
+        resource.data.get('templeId', '') == userTempleId() &&
+        request.resource.data.get('templeId', '') == userTempleId() &&
+        request.resource.data.get('monkId', '') == resource.data.get('monkId', '') &&
+        resource.data.get('monkId', '') != '' &&
+        monkExists(resource.data.get('monkId', '')) &&
+        getMonkData(resource.data.get('monkId', '')).get('templeId', '') == userTempleId();
+    }
+
+    // Validation helper for region_admin updating a healthCheck for their own temple:
+    // 1. existing resource.data.templeId == userTempleId()
+    // 2. new request.resource.data.templeId == userTempleId()
+    // 3. existing and new region9 == userAssignedRegion()
+    // 4. monkId must remain unchanged
+    // 5. referenced monk exists, belongs to own temple, and monk.region9 == userAssignedRegion()
+    function isValidRegionAdminHealthCheckUpdate() {
+      return isRegionAdmin() &&
+        resource.data.get('templeId', '') == userTempleId() &&
+        request.resource.data.get('templeId', '') == userTempleId() &&
+        resource.data.get('region9', '') == userAssignedRegion() &&
+        request.resource.data.get('region9', '') == userAssignedRegion() &&
+        request.resource.data.get('monkId', '') == resource.data.get('monkId', '') &&
+        resource.data.get('monkId', '') != '' &&
+        monkExists(resource.data.get('monkId', '')) &&
+        getMonkData(resource.data.get('monkId', '')).get('templeId', '') == userTempleId() &&
+        getMonkData(resource.data.get('monkId', '')).get('region9', '') == userAssignedRegion();
     }
 
     // ==========================================
@@ -153,10 +234,16 @@ service cloud.firestore {
       // UPDATE permissions:
       // - super_admin: full update (including approvals)
       // - temple_admin: own temple only (status cannot be self-approved)
-      // - region_admin: DENIED (cannot update temples or approve registrations)
+      // - region_admin: own temple only within assignedRegion (status cannot be changed)
       allow update: if isSuperAdmin() || (
         isTempleAdmin() &&
         templeId == userTempleId() &&
+        request.resource.data.get('status', '') == resource.data.get('status', '')
+      ) || (
+        isRegionAdmin() &&
+        templeId == userTempleId() &&
+        resource.data.get('region9', '') == userAssignedRegion() &&
+        request.resource.data.get('region9', '') == userAssignedRegion() &&
         request.resource.data.get('status', '') == resource.data.get('status', '')
       );
 
@@ -215,22 +302,24 @@ service cloud.firestore {
 
       // CREATE permissions:
       // - super_admin: can create any health check
-      // - temple_admin: health checks for their own temple
-      // - region_admin: DENIED for V1
+      // - temple_admin: health checks for their own temple with valid monk reference
+      // - region_admin: health checks for their own temple only with valid monk & region reference
       allow create: if isSuperAdmin() ||
-        (isTempleAdmin() && request.resource.data.get('templeId', '') == userTempleId());
+        isValidTempleAdminHealthCheckCreate() ||
+        isValidRegionAdminHealthCheckCreate();
 
       // UPDATE permissions:
       // - super_admin: can update
-      // - temple_admin: own temple health checks only
-      // - region_admin: DENIED for V1
+      // - temple_admin: own temple health checks only with unchanged monkId and valid monk reference
+      // - region_admin: own temple health checks only with unchanged monkId, valid monk reference and assignedRegion
       allow update: if isSuperAdmin() ||
-        (isTempleAdmin() && resource.data.get('templeId', '') == userTempleId() && request.resource.data.get('templeId', '') == userTempleId());
+        isValidTempleAdminHealthCheckUpdate() ||
+        isValidRegionAdminHealthCheckUpdate();
 
       // DELETE permissions:
       // - super_admin: can delete
       // - temple_admin: DENIED (permanent delete locked to super_admin only)
-      // - region_admin: DENIED for V1
+      // - region_admin: DENIED
       allow delete: if isSuperAdmin();
     }
 

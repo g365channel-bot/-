@@ -57,8 +57,8 @@ export const HealthEntryView: React.FC = () => {
 
   // Header State
   const [templeId, setTempleId] = useState<string>(() => {
-    if (currentUser?.role === 'temple_admin') {
-      return currentUser.templeId || '';
+    if ((currentUser?.role === 'temple_admin' || currentUser?.role === 'region_admin') && currentUser.templeId) {
+      return currentUser.templeId;
     }
     return prefillHealthEntry?.templeId || '';
   });
@@ -147,16 +147,27 @@ export const HealthEntryView: React.FC = () => {
     }
   }, [templeId, temples]);
 
-  // If user role is temple_admin, lock templeId
+  // If user role is temple_admin or region_admin, lock templeId
   useEffect(() => {
-    if (currentUser?.role === 'temple_admin') {
-      setTempleId(currentUser.templeId || '');
+    if ((currentUser?.role === 'temple_admin' || currentUser?.role === 'region_admin') && currentUser.templeId) {
+      setTempleId(currentUser.templeId);
     }
   }, [currentUser?.role, currentUser?.templeId]);
 
+  // If region_admin received a prefill for a monk in another temple, reject it
+  useEffect(() => {
+    if (currentUser?.role === 'region_admin' && currentUser.templeId) {
+      if (prefillHealthEntry?.templeId && prefillHealthEntry.templeId !== currentUser.templeId) {
+        setPrefillHealthEntry(null);
+        setSelectedMonkIdLocal('');
+      }
+    }
+  }, [currentUser, prefillHealthEntry, setPrefillHealthEntry]);
+
   // Monks in selected temple
   const templeMonks = useMemo(() => {
-    const activeTempleId = currentUser?.role === 'temple_admin' ? (currentUser.templeId || '') : templeId;
+    const isLockedToOwnTemple = currentUser?.role === 'temple_admin' || currentUser?.role === 'region_admin';
+    const activeTempleId = isLockedToOwnTemple ? (currentUser?.templeId || '') : templeId;
     return monks.filter((m) => m.templeId === activeTempleId);
   }, [monks, templeId, currentUser?.role, currentUser?.templeId]);
 
@@ -349,15 +360,19 @@ export const HealthEntryView: React.FC = () => {
       setIsSaving(true);
       setSaveError(null);
 
-      // 4. temple_admin must force:
+      // 4. temple_admin and region_admin must force:
       // payload.templeId = currentUser.templeId
       // Never use temples[0], fallback IDs, or a stale selected temple.
       let effectiveTempleId = currentMonk?.templeId || templeId || '';
-      if (currentUser?.role === 'temple_admin') {
+      if (currentUser?.role === 'temple_admin' || currentUser?.role === 'region_admin') {
         if (!currentUser.templeId) {
-          throw new Error('ไม่พบรหัสวัดของผู้ดูแลวัด (currentUser.templeId is missing)');
+          throw new Error('ไม่พบรหัสวัดประจำตัวของผู้ดูแล (currentUser.templeId is missing)');
         }
         effectiveTempleId = currentUser.templeId;
+      }
+
+      if (currentUser?.role === 'region_admin' && currentMonk && currentMonk.templeId !== currentUser.templeId) {
+        throw new Error('region_admin สามารถบันทึกผลตรวจสุขภาพได้เฉพาะพระสงฆ์ในวัดประจำตัวเท่านั้น');
       }
 
       // 3. Before saving, verify and log temporarily:
@@ -548,11 +563,11 @@ export const HealthEntryView: React.FC = () => {
                   setTempleId(e.target.value);
                   setSelectedMonkIdLocal('');
                 }}
-                disabled={currentUser?.role === 'temple_admin'}
+                disabled={currentUser?.role === 'temple_admin' || currentUser?.role === 'region_admin'}
                 className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-sm text-stone-800 font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none disabled:bg-stone-100"
                 required
               >
-                {currentUser?.role !== 'temple_admin' && (
+                {currentUser?.role !== 'temple_admin' && currentUser?.role !== 'region_admin' && (
                   <option value="">-- กรุณาเลือกวัด --</option>
                 )}
                 {temples.map((t) => (

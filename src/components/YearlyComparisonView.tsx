@@ -221,14 +221,18 @@ export const YearlyComparisonView: React.FC = () => {
           <div className="flex items-center gap-2 mb-1">
             <GitCompare className="w-5 h-5 text-emerald-700" />
             <span className="text-xs font-bold text-stone-500 uppercase tracking-wider font-heading">
-              การวิเคราะห์เชิงเปรียบเทียบ
+              {currentUser?.role === 'region_admin'
+                ? (currentUser.assignedRegion ? `การวิเคราะห์เปรียบเทียบภาค ${currentUser.assignedRegion}` : 'การวิเคราะห์เปรียบเทียบภาค')
+                : 'การวิเคราะห์เชิงเปรียบเทียบ'}
             </span>
           </div>
           <h1 className="text-xl sm:text-2xl font-bold font-heading text-stone-900 tracking-tight">
             เปรียบเทียบผลตรวจและพฤติกรรมสุขภาพรายปี
           </h1>
           <p className="text-stone-500 text-xs sm:text-sm">
-            วิเคราะห์ความก้าวหน้าและการเปลี่ยนแปลงของสุขภาพพระสงฆ์ระหว่างปี พ.ศ. {baseYear} กับ พ.ศ. {targetYear}
+            {currentUser?.role === 'region_admin'
+              ? `วิเคราะห์ความก้าวหน้าและการเปลี่ยนแปลงของสุขภาพพระสงฆ์ ทุกวัดในภาค${currentUser.assignedRegion ? ` ${currentUser.assignedRegion}` : ''} ระหว่างปี พ.ศ. ${baseYear} กับ พ.ศ. ${targetYear}`
+              : `วิเคราะห์ความก้าวหน้าและการเปลี่ยนแปลงของสุขภาพพระสงฆ์ระหว่างปี พ.ศ. ${baseYear} กับ พ.ศ. ${targetYear}`}
           </p>
         </div>
       </div>
@@ -285,6 +289,7 @@ export const YearlyComparisonView: React.FC = () => {
               className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-xs text-stone-800 focus:ring-2 focus:ring-emerald-600 focus:outline-none disabled:bg-stone-100 font-medium"
             >
               {currentUser?.role === 'super_admin' && <option value="all">ภาพรวมทุกวัดในระบบ</option>}
+              {currentUser?.role === 'region_admin' && <option value="all">ทุกวัดในภาค</option>}
               {temples.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name} ({t.province})
@@ -435,8 +440,15 @@ export const YearlyComparisonView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100">
-              {pairedMonksAnalysis.list.map(({ monk, base, target, bmiDiff, sugarDiff, bpDiff, statusChange }) => {
-                return (
+              {pairedMonksAnalysis.list.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="p-8 text-center text-stone-400">
+                    ไม่พบข้อมูลพระสงฆ์ที่รับการตรวจสุขภาพทั้ง 2 ปีเพื่อนำมาเปรียบเทียบ
+                  </td>
+                </tr>
+              ) : (
+                pairedMonksAnalysis.list.map(({ monk, base, target, bmiDiff, sugarDiff, bpDiff, statusChange }) => {
+                  return (
                   <tr key={monk.id} className="hover:bg-stone-50">
                     <td className="p-3 font-medium">
                       <div className="font-bold text-stone-900">{monk.name} ({monk.monkName})</div>
@@ -526,7 +538,7 @@ export const YearlyComparisonView: React.FC = () => {
                     </td>
                   </tr>
                 );
-              })}
+              }))}
             </tbody>
           </table>
         </div>

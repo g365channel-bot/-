@@ -40,6 +40,7 @@ import {
 
 export const MonkDetailView: React.FC = () => {
   const {
+    currentUser,
     selectedMonkId,
     monks,
     temples,
@@ -169,14 +170,16 @@ export const MonkDetailView: React.FC = () => {
             <span>พิมพ์รายงานสรุป (Print / PDF)</span>
           </button>
 
-          <button
-            id="monk-detail-record-btn"
-            onClick={handleAddYearCheck}
-            className="px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer font-heading"
-          >
-            <ClipboardPenLine className="w-4 h-4 text-amber-300" />
-            <span>+ บันทึกผลตรวจปีนี้</span>
-          </button>
+          {(currentUser?.role !== 'region_admin' || monk.templeId === currentUser.templeId) && (
+            <button
+              id="monk-detail-record-btn"
+              onClick={handleAddYearCheck}
+              className="px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer font-heading"
+            >
+              <ClipboardPenLine className="w-4 h-4 text-amber-300" />
+              <span>+ บันทึกผลตรวจปีนี้</span>
+            </button>
+          )}
         </div>
       </div>
 

@@ -566,19 +566,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     birthDate?: string;
   }): Promise<Monk> => {
     try {
-      const selectedTemple = temples.find((t) => t.id === data.templeId);
+      let effectiveTempleId = data.templeId;
+      let effectiveProvince = data.province;
       let region9: StandardRegion9 | null = null;
-      if (selectedTemple) {
-        region9 = getRegionFromProvince(selectedTemple.province);
-        if (!region9) {
+
+      if (currentUser?.role === 'region_admin') {
+        if (!currentUser.assignedRegion) {
+          throw new Error('ไม่พบข้อมูลภาคที่รับผิดชอบของผู้ดูแลภาค (currentUser.assignedRegion is missing)');
+        }
+        if (!data.templeId) {
+          throw new Error('กรุณาระบุรหัสวัด (data.templeId is missing)');
+        }
+        const selectedTemple = temples.find((t) => t.id === data.templeId);
+        if (!selectedTemple) {
+          throw new Error(`ไม่พบข้อมูลวัดรหัส "${data.templeId}" ในเขตพื้นที่ภาคที่ดูแล`);
+        }
+        if (selectedTemple.region9 !== currentUser.assignedRegion) {
+          throw new Error(`วัด "${selectedTemple.name}" ไม่อยู่ในภาคที่รับผิดชอบ (${currentUser.assignedRegion})`);
+        }
+        const derivedRegion9 = getRegionFromProvince(selectedTemple.province);
+        if (!derivedRegion9 || derivedRegion9 !== currentUser.assignedRegion) {
+          throw new Error(`จังหวัดของวัด (${selectedTemple.province}) ไม่ตรงกับภาคที่รับผิดชอบ (${currentUser.assignedRegion})`);
+        }
+        effectiveTempleId = selectedTemple.id;
+        effectiveProvince = selectedTemple.province;
+        region9 = derivedRegion9;
+      } else {
+        const selectedTemple = temples.find((t) => t.id === data.templeId);
+        if (selectedTemple) {
+          region9 = getRegionFromProvince(selectedTemple.province);
+          if (!region9) {
+            console.warn(
+              `[addMonk] Could not map province "${selectedTemple.province}" from temple "${selectedTemple.name}" (${selectedTemple.id}) to StandardRegion9`
+            );
+          }
+        } else {
           console.warn(
-            `[addMonk] Could not map province "${selectedTemple.province}" from temple "${selectedTemple.name}" (${selectedTemple.id}) to StandardRegion9`
+            `[addMonk] Selected temple with id "${data.templeId}" not found in temples list. Cannot derive region9.`
           );
         }
-      } else {
-        console.warn(
-          `[addMonk] Selected temple with id "${data.templeId}" not found in temples list. Cannot derive region9.`
-        );
       }
 
       const monkRef = doc(collection(db, 'monks'));
@@ -587,8 +613,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         monkName: data.monkName.trim(),
         age: Number(data.age),
         monasticYears: Number(data.monasticYears),
-        templeId: data.templeId,
-        province: data.province,
+        templeId: effectiveTempleId,
+        province: effectiveProvince,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -627,26 +653,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateMonk = async (updated: Monk): Promise<void> => {
     try {
-      const effectiveTempleId =
-        currentUser?.role === 'super_admin' && updated.templeId
-          ? updated.templeId
-          : updated.templeId;
-
-      const selectedTemple = temples.find((t) => t.id === effectiveTempleId);
-      let region9: StandardRegion9 | null = null;
-      if (selectedTemple) {
-        region9 = getRegionFromProvince(selectedTemple.province);
-        if (!region9) {
-          console.warn(
-            `[updateMonk] Could not map province "${selectedTemple.province}" from temple "${selectedTemple.name}" (${selectedTemple.id}) to StandardRegion9`
-          );
-        }
-      } else {
-        console.warn(
-          `[updateMonk] Selected temple with id "${effectiveTempleId}" not found in temples list. Cannot derive region9.`
-        );
-      }
-
       const monkRef = doc(db, 'monks', updated.id);
       const updateData: any = {
         name: updated.name.trim(),
@@ -659,11 +665,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (updated.birthDate) {
         updateData.birthDate = updated.birthDate;
       }
-      if (currentUser?.role === 'super_admin' && updated.templeId) {
+
+      let finalRegion9: StandardRegion9 | null = null;
+
+      if (currentUser?.role === 'region_admin') {
+        if (!currentUser.assignedRegion) {
+          throw new Error('ไม่พบข้อมูลภาคที่รับผิดชอบของผู้ดูแลภาค (currentUser.assignedRegion is missing)');
+        }
+        if (!updated.templeId) {
+          throw new Error('กรุณาระบุรหัสวัด (updated.templeId is missing)');
+        }
+        const targetTemple = temples.find((t) => t.id === updated.templeId);
+        if (!targetTemple) {
+          throw new Error(`ไม่พบข้อมูลวัดรหัส "${updated.templeId}" ในเขตพื้นที่ภาคที่ดูแล`);
+        }
+        if (targetTemple.region9 !== currentUser.assignedRegion) {
+          throw new Error(`วัด "${targetTemple.name}" ไม่อยู่ในภาคที่รับผิดชอบ (${currentUser.assignedRegion})`);
+        }
+        const derivedRegion9 = getRegionFromProvince(targetTemple.province);
+        if (!derivedRegion9 || derivedRegion9 !== currentUser.assignedRegion) {
+          throw new Error(`จังหวัดของวัด (${targetTemple.province}) ไม่ตรงกับภาคที่รับผิดชอบ (${currentUser.assignedRegion})`);
+        }
         updateData.templeId = updated.templeId;
-      }
-      if (region9) {
-        updateData.region9 = region9;
+        updateData.province = targetTemple.province;
+        updateData.region9 = derivedRegion9;
+        finalRegion9 = derivedRegion9;
+      } else {
+        const effectiveTempleId =
+          currentUser?.role === 'super_admin' && updated.templeId
+            ? updated.templeId
+            : updated.templeId;
+
+        const selectedTemple = temples.find((t) => t.id === effectiveTempleId);
+        let region9: StandardRegion9 | null = null;
+        if (selectedTemple) {
+          region9 = getRegionFromProvince(selectedTemple.province);
+          if (!region9) {
+            console.warn(
+              `[updateMonk] Could not map province "${selectedTemple.province}" from temple "${selectedTemple.name}" (${selectedTemple.id}) to StandardRegion9`
+            );
+          }
+        } else {
+          console.warn(
+            `[updateMonk] Selected temple with id "${effectiveTempleId}" not found in temples list. Cannot derive region9.`
+          );
+        }
+
+        if (currentUser?.role === 'super_admin' && updated.templeId) {
+          updateData.templeId = updated.templeId;
+        }
+        if (region9) {
+          updateData.region9 = region9;
+          finalRegion9 = region9;
+        }
       }
 
       await updateDoc(monkRef, updateData);
@@ -673,7 +727,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           m.id === updated.id
             ? {
                 ...updated,
-                ...(region9 ? { region9 } : {}),
+                ...updateData,
+                ...(finalRegion9 ? { region9: finalRegion9 } : {}),
                 updatedAt: new Date().toISOString(),
               }
             : m
@@ -704,12 +759,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<HealthCheck> => {
     const monk = monks.find((m) => m.id === data.monkId);
 
-    // 4. temple_admin must force: payload.templeId = currentUser.templeId
+    // 4. temple_admin & region_admin must force: payload.templeId = currentUser.templeId
     // Never use temples[0], fallback IDs, or a stale selected temple.
     let payloadTempleId = data.templeId;
     if (currentUser?.role === 'temple_admin') {
       if (!currentUser.templeId) {
         throw new Error('ไม่พบรหัสวัดของผู้ดูแลวัด (currentUser.templeId is missing)');
+      }
+      payloadTempleId = currentUser.templeId;
+    } else if (currentUser?.role === 'region_admin') {
+      if (!currentUser.templeId) {
+        throw new Error('ไม่พบรหัสวัดประจำตัวของ region_admin (currentUser.templeId is missing)');
       }
       payloadTempleId = currentUser.templeId;
     } else if (!payloadTempleId) {
@@ -736,9 +796,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const yearNum = Number(data.year);
     const templeObj = temples.find((t) => t.id === payloadTempleId);
-    const templeName = data.templeName || templeObj?.name || '';
-    const province = data.province || templeObj?.province || monk?.province || '';
-    const region = data.region || templeObj?.region || 'กลาง';
+
+    if (currentUser?.role === 'region_admin') {
+      if (!templeObj) {
+        throw new Error('ไม่พบข้อมูลวัดประจำตัวในรายการวัดที่เข้าถึงได้ (Own temple not found in scoped temples)');
+      }
+      if (monk && monk.templeId !== currentUser.templeId) {
+        throw new Error('region_admin สามารถบันทึกผลตรวจสุขภาพได้เฉพาะพระสงฆ์ในวัดประจำตัวเท่านั้น');
+      }
+    }
+
+    const templeName = (currentUser?.role === 'region_admin' && templeObj)
+      ? templeObj.name
+      : (data.templeName || templeObj?.name || '');
+    const province = (currentUser?.role === 'region_admin' && templeObj)
+      ? templeObj.province
+      : (data.province || templeObj?.province || monk?.province || '');
+    const region = (currentUser?.role === 'region_admin' && templeObj)
+      ? (templeObj.region || 'กลาง')
+      : (data.region || templeObj?.region || 'กลาง');
 
     let region9: StandardRegion9 | null = null;
     if (templeObj) {
@@ -752,6 +828,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn(
         `[addHealthCheck] Selected temple with id "${payloadTempleId}" not found in temples list. Cannot derive region9.`
       );
+    }
+
+    if (currentUser?.role === 'region_admin') {
+      if (!region9 || region9 !== currentUser.assignedRegion) {
+        throw new Error('Region9 ของวัดประจำตัวไม่ตรงกับ assignedRegion ของ region_admin');
+      }
     }
 
     const sanitizeNum = (val: any): number | null => {
@@ -921,11 +1003,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         throw new Error('ไม่พบรหัสวัดของผู้ดูแลวัด (currentUser.templeId is missing)');
       }
       payloadTempleId = currentUser.templeId;
+    } else if (currentUser?.role === 'region_admin') {
+      if (!currentUser.templeId) {
+        throw new Error('ไม่พบรหัสวัดประจำตัวของ region_admin (currentUser.templeId is missing)');
+      }
+      payloadTempleId = currentUser.templeId;
     } else if (!payloadTempleId) {
       payloadTempleId = monk?.templeId || '';
     }
 
     const templeObj = temples.find((t) => t.id === payloadTempleId);
+
+    if (currentUser?.role === 'region_admin') {
+      if (!templeObj) {
+        throw new Error('ไม่พบข้อมูลวัดประจำตัวในรายการวัดที่เข้าถึงได้ (Own temple not found in scoped temples)');
+      }
+      if (monk && monk.templeId !== currentUser.templeId) {
+        throw new Error('region_admin สามารถแก้ไขผลตรวจสุขภาพได้เฉพาะพระสงฆ์ในวัดประจำตัวเท่านั้น');
+      }
+    }
+
     let region9: StandardRegion9 | null = null;
     if (templeObj) {
       region9 = getRegionFromProvince(templeObj.province);
@@ -938,6 +1035,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn(
         `[updateHealthCheck] Selected temple with id "${payloadTempleId}" not found in temples list. Cannot derive region9.`
       );
+    }
+
+    if (currentUser?.role === 'region_admin') {
+      if (!region9 || region9 !== currentUser.assignedRegion) {
+        throw new Error('Region9 ของวัดประจำตัวไม่ตรงกับ assignedRegion ของ region_admin');
+      }
     }
 
     console.log("currentUser.templeId", currentUser?.templeId);
@@ -1066,6 +1169,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateTemple = async (updated: Temple): Promise<void> => {
     try {
+      if (currentUser?.role === 'region_admin') {
+        if (!currentUser.templeId || updated.id !== currentUser.templeId) {
+          throw new Error('region_admin สามารถแก้ไขข้อมูลได้เฉพาะวัดประจำตัวของตนเองเท่านั้น');
+        }
+      } else if (currentUser?.role === 'temple_admin') {
+        if (!currentUser.templeId || updated.id !== currentUser.templeId) {
+          throw new Error('temple_admin สามารถแก้ไขข้อมูลได้เฉพาะวัดของตนเองเท่านั้น');
+        }
+      }
+
       const effectiveProvince = updated.province || '';
       let region9: StandardRegion9 | null = null;
       if (effectiveProvince) {
@@ -1079,6 +1192,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn(
           `[updateTemple] Temple "${updated.name}" (${updated.id}) has no province specified. Cannot derive region9.`
         );
+      }
+
+      if (currentUser?.role === 'region_admin') {
+        if (!region9 || region9 !== currentUser.assignedRegion) {
+          throw new Error('ไม่สามารถเปลี่ยนจังหวัดของวัดให้ไปอยู่นอกภาคที่ตนเองดูแลได้ (New region9 must remain assignedRegion)');
+        }
       }
 
       const updateData: Record<string, any> = {

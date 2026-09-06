@@ -243,7 +243,12 @@ export const DashboardView: React.FC = () => {
   const handleStartEntry = () => {
     setPrefillHealthEntry({
       year: selectedYear,
-      templeId: selectedTempleId !== 'all' ? selectedTempleId : (currentUser?.role === 'temple_admin' ? currentUser.templeId : undefined),
+      templeId:
+        currentUser?.role === 'region_admin' || currentUser?.role === 'temple_admin'
+          ? currentUser.templeId
+          : selectedTempleId !== 'all'
+          ? selectedTempleId
+          : undefined,
     });
     setActiveTab('health_entry');
   };
@@ -255,7 +260,11 @@ export const DashboardView: React.FC = () => {
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="bg-amber-400 text-stone-900 text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider font-heading">
-              สรุปภาพรวม
+              {currentUser?.role === 'region_admin'
+                ? (currentUser.assignedRegion ? `ภาพรวมภาค ${currentUser.assignedRegion}` : 'ภาพรวมภาค')
+                : currentUser?.role === 'temple_admin'
+                ? currentUser.templeName || 'ประจำวัด'
+                : 'สรุปภาพรวม'}
             </span>
             <span className="text-emerald-200 text-xs font-mono">
               ข้อมูลประจำปี พ.ศ. {selectedYear}
@@ -265,7 +274,9 @@ export const DashboardView: React.FC = () => {
             แดชบอร์ดสถานการณ์สุขภาพพระสงฆ์
           </h1>
           <p className="text-emerald-100 text-xs sm:text-sm max-w-2xl leading-relaxed">
-            ติดตามและสรุปผลตรวจสุขภาพประจำปี เพื่อส่งเสริมสุขภาวะที่ดีอย่างยั่งยืน
+            {currentUser?.role === 'region_admin'
+              ? `ติดตามและสรุปผลตรวจสุขภาพพระสงฆ์ ทุกวัดในภาค${currentUser.assignedRegion ? ` ${currentUser.assignedRegion}` : ''}`
+              : 'ติดตามและสรุปผลตรวจสุขภาพประจำปี เพื่อส่งเสริมสุขภาวะที่ดีอย่างยั่งยืน'}
           </p>
         </div>
 
@@ -306,13 +317,13 @@ export const DashboardView: React.FC = () => {
             </select>
           </div>
 
-          {/* Region Filter (Disabled for temple admin) */}
+          {/* Region Filter (Disabled for temple admin & region admin) */}
           <div>
             <label className="block text-xs font-medium text-stone-500 mb-1">ภาค</label>
             <select
               id="filter-region-select"
               value={selectedRegion}
-              disabled={currentUser?.role === 'temple_admin'}
+              disabled={currentUser?.role === 'temple_admin' || currentUser?.role === 'region_admin'}
               onChange={(e) => {
                 setSelectedRegion(e.target.value);
                 setSelectedProvince('all');
@@ -320,12 +331,19 @@ export const DashboardView: React.FC = () => {
               }}
               className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-2 text-sm text-stone-800 focus:ring-2 focus:ring-emerald-600 focus:outline-none disabled:bg-stone-100 disabled:text-stone-400"
             >
-              <option value="all">ทุกภาคทั่วประเทศ</option>
-              {regions.map((r) => (
-                <option key={r} value={r}>
-                  ภาค{r}
+              {currentUser?.role === 'region_admin' ? (
+                <option value="all">
+                  {currentUser.assignedRegion ? `ภาค ${currentUser.assignedRegion}` : 'ทุกวัดในภาค'}
                 </option>
-              ))}
+              ) : (
+                <option value="all">ทุกภาคทั่วประเทศ</option>
+              )}
+              {currentUser?.role !== 'region_admin' &&
+                regions.map((r) => (
+                  <option key={r} value={r}>
+                    ภาค{r}
+                  </option>
+                ))}
             </select>
           </div>
 
@@ -362,6 +380,7 @@ export const DashboardView: React.FC = () => {
               className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-2 text-sm text-stone-800 focus:ring-2 focus:ring-emerald-600 focus:outline-none disabled:bg-stone-100 disabled:text-stone-400 font-medium"
             >
               {currentUser?.role === 'super_admin' && <option value="all">ทุกวัดในพื้นที่</option>}
+              {currentUser?.role === 'region_admin' && <option value="all">ทุกวัดในภาค</option>}
               {filteredTemplesList.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name} ({t.province})

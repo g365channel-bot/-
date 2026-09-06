@@ -36,18 +36,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
       sublabel: 'ภาพรวมสถานะและสถิติสุขภาพ',
       icon: LayoutDashboard,
     },
-    // Hide health_entry for region_admin (read-only for health in V1)
-    ...(currentUser?.role !== 'region_admin'
-      ? [
-          {
-            id: 'health_entry' as ActiveTab,
-            label: 'กรอกข้อมูลสุขภาพ',
-            sublabel: 'บันทึกผลตรวจประจำปี',
-            icon: ClipboardPenLine,
-            highlight: true,
-          },
-        ]
-      : []),
+    {
+      id: 'health_entry' as ActiveTab,
+      label: 'กรอกข้อมูลสุขภาพ',
+      sublabel: 'บันทึกผลตรวจประจำปี',
+      icon: ClipboardPenLine,
+      highlight: true,
+    },
     {
       id: 'monk_list' as ActiveTab,
       label: 'รายชื่อพระสงฆ์',
@@ -74,11 +69,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
     },
   ];
 
-  // Super Admin only menu item
+  // Super Admin and Region Admin menu items
   if (currentUser?.role === 'super_admin') {
     navItems.push({
       id: 'temple_management' as ActiveTab,
       label: 'จัดการวัด',
+      sublabel: 'ข้อมูลวัดและโรงพยาบาลพี่เลี้ยง',
+      icon: Building,
+    });
+  } else if (currentUser?.role === 'region_admin') {
+    navItems.push({
+      id: 'temple_management' as ActiveTab,
+      label: 'ข้อมูลวัดของฉัน',
       sublabel: 'ข้อมูลวัดและโรงพยาบาลพี่เลี้ยง',
       icon: Building,
     });

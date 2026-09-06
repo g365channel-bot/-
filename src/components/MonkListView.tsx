@@ -610,6 +610,7 @@ export const MonkListView: React.FC = () => {
               className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-xs text-stone-800 focus:ring-2 focus:ring-emerald-600 focus:outline-none disabled:bg-stone-100 font-medium"
             >
               {currentUser?.role === 'super_admin' && <option value="all">ทุกวัดในระบบ</option>}
+              {currentUser?.role === 'region_admin' && <option value="all">ทุกวัดในภาค</option>}
               {temples.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name} ({t.province})
@@ -765,15 +766,17 @@ export const MonkListView: React.FC = () => {
                         </button>
 
                         {/* Health Entry for this monk */}
-                        <button
-                          id={`entry-monk-${monk.id}`}
-                          onClick={() => handleEntryHealth(monk)}
-                          className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer"
-                          title="กรอกผลตรวจสุขภาพปีนี้"
-                        >
-                          <ClipboardPenLine className="w-3.5 h-3.5 text-amber-700" />
-                          <span>กรอกผล</span>
-                        </button>
+                        {(currentUser?.role !== 'region_admin' || monk.templeId === currentUser.templeId) && (
+                          <button
+                            id={`entry-monk-${monk.id}`}
+                            onClick={() => handleEntryHealth(monk)}
+                            className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg text-xs font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer"
+                            title="กรอกผลตรวจสุขภาพปีนี้"
+                          >
+                            <ClipboardPenLine className="w-3.5 h-3.5 text-amber-700" />
+                            <span>กรอกผล</span>
+                          </button>
+                        )}
 
                         {/* Edit Monk Info */}
                         <button
@@ -806,6 +809,8 @@ export const MonkListView: React.FC = () => {
                       <p className="text-sm font-semibold text-stone-700">
                         {currentUser?.role === 'temple_admin'
                           ? 'ยังไม่มีรายชื่อพระสงฆ์ในวัดนี้'
+                          : currentUser?.role === 'region_admin'
+                          ? 'ยังไม่มีรายชื่อพระสงฆ์ในภาคนี้'
                           : 'ยังไม่มีข้อมูลพระสงฆ์ในระบบ'}
                       </p>
                       <p className="text-xs text-stone-400">

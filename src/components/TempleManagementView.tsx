@@ -269,6 +269,12 @@ export const TempleManagementView: React.FC = () => {
   const regions = useMemo(() => Array.from(new Set(temples.map((t) => t.region))), [temples]);
 
   const filteredTemples = useMemo(() => {
+    // For region_admin: Show ONLY the temple whose id === currentUser.templeId
+    if (currentUser?.role === 'region_admin') {
+      if (!currentUser.templeId) return [];
+      return temples.filter((t) => t.id === currentUser.templeId);
+    }
+
     return temples.filter((t) => {
       if (selectedRegion !== 'all' && t.region !== selectedRegion) return false;
       if (searchQuery.trim()) {
@@ -281,9 +287,13 @@ export const TempleManagementView: React.FC = () => {
       }
       return true;
     });
-  }, [temples, selectedRegion, searchQuery]);
+  }, [temples, selectedRegion, searchQuery, currentUser?.role, currentUser?.templeId]);
 
   const handleOpenEdit = (t: Temple) => {
+    // region_admin can only edit their own assigned temple
+    if (currentUser?.role === 'region_admin' && t.id !== currentUser.templeId) {
+      return;
+    }
     setEditingTemple(t);
     setName(t.name);
     setAbbotName(t.abbotName || '');
@@ -302,6 +312,11 @@ export const TempleManagementView: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !editingTemple) return;
+
+    if (currentUser?.role === 'region_admin' && editingTemple.id !== currentUser.templeId) {
+      setEditError('ท่านมีสิทธิ์แก้ไขได้เฉพาะข้อมูลวัดของตนเองเท่านั้น');
+      return;
+    }
 
     setIsSubmitting(true);
     setEditError(null);
@@ -337,22 +352,32 @@ export const TempleManagementView: React.FC = () => {
           <div className="flex items-center gap-2 mb-1">
             <Building className="w-5 h-5 text-emerald-700" />
             <span className="text-xs font-bold text-stone-500 uppercase tracking-wider font-heading">
-              {currentUser?.role === 'super_admin' ? 'ผู้ดูแลระบบกลาง (Super Admin)' : 'ผู้ดูแลประจำวัด (Temple Admin)'}
+              {currentUser?.role === 'super_admin'
+                ? 'ผู้ดูแลระบบกลาง (Super Admin)'
+                : currentUser?.role === 'region_admin'
+                ? `ผู้ดูแลระดับเขต/ภาค (Region Admin - เขตสุขภาพที่ ${currentUser.assignedRegion || '-'})`
+                : 'ผู้ดูแลประจำวัด (Temple Admin)'}
             </span>
           </div>
           <h1 className="text-xl sm:text-2xl font-bold font-heading text-stone-900 tracking-tight">
-            จัดการข้อมูลวัดและหน่วยบริการสุขภาพพี่เลี้ยง
+            {currentUser?.role === 'region_admin'
+              ? 'ข้อมูลวัดของฉัน'
+              : 'จัดการข้อมูลวัดและหน่วยบริการสุขภาพพี่เลี้ยง'}
           </h1>
           <p className="text-stone-500 text-xs sm:text-sm">
             {currentUser?.role === 'super_admin'
               ? 'รายชื่อวัดที่ได้รับการอนุมัติ และตรวจสอบคำขอลงทะเบียนวัดใหม่'
+              : currentUser?.role === 'region_admin'
+              ? 'ข้อมูลวัดประจำตัวและหน่วยบริการสุขภาพพี่เลี้ยงของท่าน'
               : 'ข้อมูลวัดและหน่วยบริการสุขภาพพี่เลี้ยงของท่าน'}
           </p>
         </div>
 
         <button
           onClick={() => {
-            fetchPendingTemples();
+            if (currentUser?.role === 'super_admin') {
+              fetchPendingTemples();
+            }
             refreshTemples();
           }}
           disabled={isTemplesLoading || isLoadingPending}
@@ -672,36 +697,38 @@ export const TempleManagementView: React.FC = () => {
         </div>
       )}
 
-      {/* Filter Bar */}
-      <div className="bg-white rounded-2xl p-4 shadow-xs border border-stone-200">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="relative">
-            <Search className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="ค้นหาชื่อวัด, จังหวัด, โรงพยาบาลพี่เลี้ยง..."
-              className="w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs text-stone-800 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
-            />
-          </div>
+      {/* Filter Bar (Only for Super Admin who browses nationwide) */}
+      {currentUser?.role === 'super_admin' && (
+        <div className="bg-white rounded-2xl p-4 shadow-xs border border-stone-200">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="relative">
+              <Search className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="ค้นหาชื่อวัด, จังหวัด, โรงพยาบาลพี่เลี้ยง..."
+                className="w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs text-stone-800 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+              />
+            </div>
 
-          <div>
-            <select
-              value={selectedRegion}
-              onChange={(e) => setSelectedRegion(e.target.value)}
-              className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-xs text-stone-800 focus:ring-2 focus:ring-emerald-600 focus:outline-none font-medium"
-            >
-              <option value="all">ทุกภาคทั่วประเทศ</option>
-              {regions.map((r) => (
-                <option key={r} value={r}>
-                  ภาค{r}
-                </option>
-              ))}
-            </select>
+            <div>
+              <select
+                value={selectedRegion}
+                onChange={(e) => setSelectedRegion(e.target.value)}
+                className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-xs text-stone-800 focus:ring-2 focus:ring-emerald-600 focus:outline-none font-medium"
+              >
+                <option value="all">ทุกภาคทั่วประเทศ</option>
+                {regions.map((r) => (
+                  <option key={r} value={r}>
+                    ภาค{r}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Loading state */}
       {isTemplesLoading && (
@@ -730,14 +757,18 @@ export const TempleManagementView: React.FC = () => {
         <div className="bg-white rounded-2xl p-10 border border-stone-200 text-center space-y-3">
           <Building className="w-10 h-10 text-stone-400 mx-auto" />
           <h3 className="text-base font-bold font-heading text-stone-800">
-            {temples.length === 0
+            {currentUser?.role === 'region_admin'
+              ? 'ไม่พบข้อมูลวัดประจำตัวของท่าน'
+              : temples.length === 0
               ? currentUser?.role === 'temple_admin'
                 ? 'ไม่พบข้อมูลวัดที่ได้รับอนุมัติ'
                 : 'ยังไม่มีวัดที่ได้รับการอนุมัติ'
               : 'ไม่พบวัดที่ตรงกับเงื่อนไขการค้นหา'}
           </h3>
           <p className="text-xs text-stone-500 max-w-sm mx-auto">
-            {temples.length === 0
+            {currentUser?.role === 'region_admin'
+              ? 'กรุณาตรวจสอบว่าบัญชีผู้ใช้ได้รับการผูกกับวัดประจำตัว (templeId) ถูกต้องแล้ว'
+              : temples.length === 0
               ? currentUser?.role === 'temple_admin'
                 ? 'กรุณาติดต่อผู้ดูแลระบบเพื่อตรวจสอบสถานะการอนุมัติวัดของท่าน'
                 : 'เมื่อมีวัดสมัครใช้งานและได้รับการอนุมัติ รายชื่อวัดจะปรากฏที่นี่'
@@ -766,7 +797,7 @@ export const TempleManagementView: React.FC = () => {
                         {temple.name}
                       </h3>
                     </div>
-                    {currentUser?.role === 'super_admin' && (
+                    {(currentUser?.role === 'super_admin' || (currentUser?.role === 'region_admin' && temple.id === currentUser.templeId)) && (
                       <button
                         onClick={() => handleOpenEdit(temple)}
                         className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"

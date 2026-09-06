@@ -713,6 +713,7 @@ export const ReportsView: React.FC = () => {
               className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-xs text-stone-800 focus:ring-2 focus:ring-emerald-600 focus:outline-none disabled:bg-stone-100 font-medium"
             >
               {currentUser?.role === 'super_admin' && <option value="all">ทุกวัดในระบบ</option>}
+              {currentUser?.role === 'region_admin' && <option value="all">ทุกวัดในภาค</option>}
               {temples.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name} ({t.province})
@@ -736,7 +737,9 @@ export const ReportsView: React.FC = () => {
             พื้นที่:{' '}
             <strong>
               {selectedTempleId === 'all'
-                ? 'ภาพรวมทุกวัด'
+                ? currentUser?.role === 'region_admin'
+                  ? `ทุกวัดในภาค${currentUser.assignedRegion ? ` ${currentUser.assignedRegion}` : ''}`
+                  : 'ภาพรวมทุกวัด'
                 : temples.find((t) => t.id === selectedTempleId)?.name}
             </strong>{' '}
             | จำนวนพระสงฆ์ในรายงาน: <strong>{filteredMonks.length} รูป</strong> | ตรวจแล้ว:{' '}
