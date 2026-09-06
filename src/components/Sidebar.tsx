@@ -1,5 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
+import { currentBuddhistYear } from '../utils/buddhistYear';
 import {
   LayoutDashboard,
   ClipboardPenLine,
@@ -156,7 +157,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
             </div>
           </div>
           <div className="mt-2 text-[11px] text-stone-400 text-center">
-            ระบบฐานข้อมูลสุขภาพพระสงฆ์ © 2569
+            ระบบฐานข้อมูลสุขภาพพระสงฆ์ © {currentBuddhistYear}
           </div>
         </div>
       </aside>

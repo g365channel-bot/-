@@ -1,10 +1,13 @@
-export type UserRole = 'temple_admin' | 'super_admin';
+import type { StandardRegion9 } from './utils/regionMapping';
+
+export type UserRole = 'temple_admin' | 'region_admin' | 'super_admin';
 
 export interface User {
   id: string;
   email: string;
   name: string;
   role: UserRole;
+  assignedRegion?: StandardRegion9;
   templeId?: string;
   templeName?: string;
 }
@@ -18,18 +21,21 @@ export interface Temple {
   district: string;
   province: string;
   region: Region;
+  region9?: StandardRegion9;
   abbotName: string;
   coordinatorName: string;
   contactPerson?: string;
   phone: string;
   healthServiceUnit: string;
   totalMonks: number;
+  status?: string;
+  createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
 }
 
 export interface Monk {
-  id: string; // monkId unique e.g. "M001"
+  id: string; // monkId unique identifier
   name: string; // ชื่อ เช่น พระสมชาย, พระมหาไพโรจน์
   monkName: string; // ฉายา เช่น ฐิตธมฺโม, ชินวํโส
   birthDate?: string;
@@ -37,6 +43,7 @@ export interface Monk {
   monasticYears: number; // พรรษา
   templeId: string;
   province: string;
+  region9?: StandardRegion9;
   createdAt: string;
   updatedAt: string;
 }
@@ -53,7 +60,7 @@ export interface HealthCheck {
   id: string;
   monkId: string;
   templeId: string;
-  year: number; // พ.ศ. เช่น 2567, 2568, 2569
+  year: number; // ปี พ.ศ. เช่น 2569, 2570 เป็นต้น
   checkDate: string; // YYYY-MM-DD
   healthServiceUnit: string;
 
@@ -76,7 +83,7 @@ export interface HealthCheck {
   // ส่วนที่ 3: โรคประจำตัว
   hasChronicDisease: 'none' | 'has';
   chronicDiseases: string[];
-  otherChronicDisease?: string;
+  otherChronicDisease?: string | null;
 
   // ส่วนที่ 4: พฤติกรรมสุขภาพ
   sweetFood: FrequencyLevel;
@@ -96,7 +103,13 @@ export interface HealthCheck {
   // ส่วนสรุป
   healthStatus: HealthStatus;
   followUpRequired: 'no' | 'yes';
-  recommendation?: string;
+  recommendation?: string | null;
+
+  // ข้อมูลวัดและสถานที่
+  templeName?: string;
+  province?: string;
+  region?: string;
+  region9?: StandardRegion9;
 
   createdAt: string;
   updatedAt: string;

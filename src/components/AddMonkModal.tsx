@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { UserPlus, X, AlertCircle } from 'lucide-react';
+import { UserPlus, X, AlertCircle, Loader2 } from 'lucide-react';
 import { Monk } from '../types';
 
 interface AddMonkModalProps {
@@ -27,6 +27,7 @@ export const AddMonkModal: React.FC<AddMonkModalProps> = ({
   const [templeId, setTempleId] = useState('');
   const [province, setProvince] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (editMonk) {
@@ -34,7 +35,11 @@ export const AddMonkModal: React.FC<AddMonkModalProps> = ({
       setMonkName(editMonk.monkName);
       setAge(editMonk.age);
       setMonasticYears(editMonk.monasticYears);
-      setTempleId(editMonk.templeId);
+      const tid =
+        currentUser?.role === 'temple_admin' && currentUser.templeId
+          ? currentUser.templeId
+          : editMonk.templeId;
+      setTempleId(tid);
       setProvince(editMonk.province);
     } else {
       setName('');
@@ -42,15 +47,15 @@ export const AddMonkModal: React.FC<AddMonkModalProps> = ({
       setAge('');
       setMonasticYears('');
       const defaultTid =
-        initialTempleId ||
-        (currentUser?.role === 'temple_admin' && currentUser.templeId) ||
-        temples[0]?.id ||
-        '';
+        currentUser?.role === 'temple_admin' && currentUser.templeId
+          ? currentUser.templeId
+          : initialTempleId || '';
       setTempleId(defaultTid);
       const t = temples.find((item) => item.id === defaultTid);
-      setProvince(t?.province || 'กรุงเทพมหานคร');
+      setProvince(t?.province || '');
     }
     setError(null);
+    setIsSubmitting(false);
   }, [isOpen, editMonk, initialTempleId, currentUser, temples]);
 
   const handleTempleChange = (tid: string) => {
@@ -63,8 +68,9 @@ export const AddMonkModal: React.FC<AddMonkModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setError(null);
 
     if (!name.trim()) {
@@ -83,35 +89,53 @@ export const AddMonkModal: React.FC<AddMonkModalProps> = ({
       setError('กรุณากรอกพรรษาให้ถูกต้อง');
       return;
     }
-    if (!templeId) {
+
+    const effectiveTempleId =
+      currentUser?.role === 'temple_admin' && currentUser.templeId
+        ? currentUser.templeId
+        : templeId;
+
+    if (!effectiveTempleId) {
       setError('กรุณาเลือกวัด');
       return;
     }
 
-    if (editMonk) {
-      const updated: Monk = {
-        ...editMonk,
-        name: name.trim(),
-        monkName: monkName.trim(),
-        age: Number(age),
-        monasticYears: Number(monasticYears),
-        templeId,
-        province,
-      };
-      updateMonk(updated);
-      if (onSuccess) onSuccess(updated);
-      onClose();
-    } else {
-      const created = addMonk({
-        name: name.trim(),
-        monkName: monkName.trim(),
-        age: Number(age),
-        monasticYears: Number(monasticYears),
-        templeId,
-        province,
-      });
-      if (onSuccess) onSuccess(created);
-      onClose();
+    setIsSubmitting(true);
+    try {
+      if (editMonk) {
+        const updated: Monk = {
+          ...editMonk,
+          name: name.trim(),
+          monkName: monkName.trim(),
+          age: Number(age),
+          monasticYears: Number(monasticYears),
+          templeId: effectiveTempleId,
+          province,
+        };
+        await updateMonk(updated);
+        if (onSuccess) onSuccess(updated);
+        onClose();
+      } else {
+        const created = await addMonk({
+          name: name.trim(),
+          monkName: monkName.trim(),
+          age: Number(age),
+          monasticYears: Number(monasticYears),
+          templeId: effectiveTempleId,
+          province,
+        });
+        if (onSuccess) onSuccess(created);
+        onClose();
+      }
+    } catch (err: any) {
+      console.error('Error saving monk to Firestore:', err);
+      setError(
+        err?.message
+          ? `เกิดข้อผิดพลาดในการบันทึก: ${err.message}`
+          : 'เกิดข้อผิดพลาดในการบันทึกข้อมูลพระสงฆ์ลง Firestore กรุณาลองใหม่อีกครั้ง'
+      );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -131,7 +155,7 @@ export const AddMonkModal: React.FC<AddMonkModalProps> = ({
               <p className="text-xs text-emerald-200">
                 {editMonk
                   ? `รหัส ${editMonk.id}`
-                  : 'ระบบจะสร้างรหัสประจำตัว (monkId) เดิมให้อัตโนมัติ'}
+                  : 'ระบบจะสร้างรหัสประจำตัวพระสงฆ์ (monkId) อัตโนมัติจาก Firestore'}
               </p>
             </div>
           </div>
@@ -243,6 +267,9 @@ export const AddMonkModal: React.FC<AddMonkModalProps> = ({
                 className="w-full px-3 py-2.5 rounded-xl border border-stone-300 text-sm focus:ring-2 focus:ring-emerald-600 focus:outline-none disabled:bg-stone-100 disabled:text-stone-500 font-medium"
                 required
               >
+                {currentUser?.role !== 'temple_admin' && (
+                  <option value="">-- กรุณาเลือกวัด --</option>
+                )}
                 {temples.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name} ({t.province})
@@ -273,9 +300,17 @@ export const AddMonkModal: React.FC<AddMonkModalProps> = ({
             <button
               id="monk-save-btn"
               type="submit"
-              className="px-5 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white font-semibold rounded-xl text-sm transition-colors shadow-sm font-heading"
+              disabled={isSubmitting}
+              className="px-5 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white font-semibold rounded-xl text-sm transition-colors shadow-sm font-heading disabled:opacity-60 disabled:cursor-not-allowed flex items-center space-x-2"
             >
-              {editMonk ? 'บันทึกการแก้ไข' : 'บันทึกเพิ่มพระสงฆ์'}
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  <span>กำลังบันทึก...</span>
+                </>
+              ) : (
+                <span>{editMonk ? 'บันทึกการแก้ไข' : 'บันทึกเพิ่มพระสงฆ์'}</span>
+              )}
             </button>
           </div>
         </form>

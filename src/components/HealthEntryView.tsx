@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import {
+  currentBuddhistYear,
+  getHealthEntryYearOptions,
+  formatBuddhistYearLabel,
+} from '../utils/buddhistYear';
+import {
   ClipboardCheck,
   UserPlus,
   HeartPulse,
@@ -13,6 +18,7 @@ import {
   Eye,
   Info,
   Calendar,
+  Loader2,
 } from 'lucide-react';
 import {
   HealthStatus,
@@ -42,6 +48,7 @@ export const HealthEntryView: React.FC = () => {
     monks,
     healthChecks,
     addHealthCheck,
+    refreshHealthChecks,
     prefillHealthEntry,
     setPrefillHealthEntry,
     setActiveTab,
@@ -50,15 +57,20 @@ export const HealthEntryView: React.FC = () => {
 
   // Header State
   const [templeId, setTempleId] = useState<string>(() => {
-    return (
-      prefillHealthEntry?.templeId ||
-      (currentUser?.role === 'temple_admin' && currentUser.templeId) ||
-      temples[0]?.id ||
-      'T01'
-    );
+    if (currentUser?.role === 'temple_admin') {
+      return currentUser.templeId || '';
+    }
+    return prefillHealthEntry?.templeId || '';
   });
 
-  const [year, setYear] = useState<number>(prefillHealthEntry?.year || 2569);
+  const [year, setYear] = useState<number>(prefillHealthEntry?.year || currentBuddhistYear);
+  const yearOptions = useMemo(() => {
+    const existing = healthChecks.map((hc) => hc.year);
+    if (prefillHealthEntry?.year) {
+      existing.push(prefillHealthEntry.year);
+    }
+    return getHealthEntryYearOptions(existing);
+  }, [healthChecks, prefillHealthEntry?.year]);
   const [checkDate, setCheckDate] = useState<string>(() => {
     if (prefillHealthEntry?.checkDate) return prefillHealthEntry.checkDate;
     const now = new Date();
@@ -123,6 +135,8 @@ export const HealthEntryView: React.FC = () => {
 
   // UI state
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [savedMonkInfo, setSavedMonkInfo] = useState<{ id: string; name: string; monkName: string } | null>(null);
 
   // Synchronize health service unit with selected temple
@@ -135,15 +149,16 @@ export const HealthEntryView: React.FC = () => {
 
   // If user role is temple_admin, lock templeId
   useEffect(() => {
-    if (currentUser?.role === 'temple_admin' && currentUser.templeId) {
-      setTempleId(currentUser.templeId);
+    if (currentUser?.role === 'temple_admin') {
+      setTempleId(currentUser.templeId || '');
     }
-  }, [currentUser]);
+  }, [currentUser?.role, currentUser?.templeId]);
 
   // Monks in selected temple
   const templeMonks = useMemo(() => {
-    return monks.filter((m) => m.templeId === templeId);
-  }, [monks, templeId]);
+    const activeTempleId = currentUser?.role === 'temple_admin' ? (currentUser.templeId || '') : templeId;
+    return monks.filter((m) => m.templeId === activeTempleId);
+  }, [monks, templeId, currentUser?.role, currentUser?.templeId]);
 
   const filteredTempleMonks = useMemo(() => {
     if (!searchMonkQuery.trim()) return templeMonks;
@@ -161,30 +176,38 @@ export const HealthEntryView: React.FC = () => {
     return monks.find((m) => m.id === selectedMonkIdLocal);
   }, [monks, selectedMonkIdLocal]);
 
-  // Existing check for this monk in this year
+  // Existing check for this monk in this year (exact match monkId and year)
   const existingCheck = useMemo(() => {
     if (!selectedMonkIdLocal || !year) return null;
-    return healthChecks.find((hc) => hc.monkId === selectedMonkIdLocal && hc.year === year);
+    return (
+      healthChecks.find(
+        (hc) =>
+          hc.monkId === selectedMonkIdLocal &&
+          Number(hc.year) === Number(year)
+      ) || null
+    );
   }, [healthChecks, selectedMonkIdLocal, year]);
 
-  // When selecting a monk or changing year, populate if existing check exists
+  // When selecting a monk or changing year, populate if existing check exists, else fully reset
   useEffect(() => {
-    if (existingCheck) {
-      setWeight(existingCheck.weight ? String(existingCheck.weight) : '');
-      setHeight(existingCheck.height ? String(existingCheck.height) : '');
-      setWaist(existingCheck.waist ? String(existingCheck.waist) : '');
-      setSystolic(existingCheck.systolic ? String(existingCheck.systolic) : '');
-      setDiastolic(existingCheck.diastolic ? String(existingCheck.diastolic) : '');
-      setBloodSugar(existingCheck.bloodSugar ? String(existingCheck.bloodSugar) : '');
-      setCholesterol(existingCheck.cholesterol ? String(existingCheck.cholesterol) : '');
-      setTriglyceride(existingCheck.triglyceride ? String(existingCheck.triglyceride) : '');
-      setHdl(existingCheck.hdl ? String(existingCheck.hdl) : '');
-      setLdl(existingCheck.ldl ? String(existingCheck.ldl) : '');
-      setCreatinine(existingCheck.creatinine ? String(existingCheck.creatinine) : '');
-      setEgfr(existingCheck.egfr ? String(existingCheck.egfr) : '');
-      setUricAcid(existingCheck.uricAcid ? String(existingCheck.uricAcid) : '');
+    setSaveSuccess(false);
 
-      setHasChronicDisease(existingCheck.hasChronicDisease);
+    if (existingCheck) {
+      setWeight(existingCheck.weight !== null && existingCheck.weight !== undefined ? String(existingCheck.weight) : '');
+      setHeight(existingCheck.height !== null && existingCheck.height !== undefined ? String(existingCheck.height) : '');
+      setWaist(existingCheck.waist !== null && existingCheck.waist !== undefined ? String(existingCheck.waist) : '');
+      setSystolic(existingCheck.systolic !== null && existingCheck.systolic !== undefined ? String(existingCheck.systolic) : '');
+      setDiastolic(existingCheck.diastolic !== null && existingCheck.diastolic !== undefined ? String(existingCheck.diastolic) : '');
+      setBloodSugar(existingCheck.bloodSugar !== null && existingCheck.bloodSugar !== undefined ? String(existingCheck.bloodSugar) : '');
+      setCholesterol(existingCheck.cholesterol !== null && existingCheck.cholesterol !== undefined ? String(existingCheck.cholesterol) : '');
+      setTriglyceride(existingCheck.triglyceride !== null && existingCheck.triglyceride !== undefined ? String(existingCheck.triglyceride) : '');
+      setHdl(existingCheck.hdl !== null && existingCheck.hdl !== undefined ? String(existingCheck.hdl) : '');
+      setLdl(existingCheck.ldl !== null && existingCheck.ldl !== undefined ? String(existingCheck.ldl) : '');
+      setCreatinine(existingCheck.creatinine !== null && existingCheck.creatinine !== undefined ? String(existingCheck.creatinine) : '');
+      setEgfr(existingCheck.egfr !== null && existingCheck.egfr !== undefined ? String(existingCheck.egfr) : '');
+      setUricAcid(existingCheck.uricAcid !== null && existingCheck.uricAcid !== undefined ? String(existingCheck.uricAcid) : '');
+
+      setHasChronicDisease(existingCheck.hasChronicDisease || 'none');
       setChronicDiseases(existingCheck.chronicDiseases || []);
       setOtherChronicDisease(existingCheck.otherChronicDisease || '');
 
@@ -199,7 +222,11 @@ export const HealthEntryView: React.FC = () => {
       setMeditationDuration(existingCheck.meditationDuration || '15_30');
 
       setSmokingStatus(existingCheck.smokingStatus || 'never');
-      setCigarettesPerDay(existingCheck.cigarettesPerDay ? String(existingCheck.cigarettesPerDay) : '');
+      setCigarettesPerDay(
+        existingCheck.cigarettesPerDay !== null && existingCheck.cigarettesPerDay !== undefined
+          ? String(existingCheck.cigarettesPerDay)
+          : ''
+      );
 
       setSleepHours(existingCheck.sleepHours || '7_8');
       setSleepQuality(existingCheck.sleepQuality || 'sufficient');
@@ -208,8 +235,15 @@ export const HealthEntryView: React.FC = () => {
       setHealthStatus(existingCheck.healthStatus || 'normal');
       setFollowUpRequired(existingCheck.followUpRequired || 'no');
       setRecommendation(existingCheck.recommendation || '');
+
+      if (existingCheck.checkDate) {
+        setCheckDate(existingCheck.checkDate);
+      }
+      if (existingCheck.healthServiceUnit) {
+        setHealthServiceUnit(existingCheck.healthServiceUnit);
+      }
     } else {
-      // Clear measurements for new entry
+      // Clear measurements for new entry - do not carry values from the previously selected year
       setWeight('');
       setHeight('');
       setWaist('');
@@ -303,7 +337,7 @@ export const HealthEntryView: React.FC = () => {
     });
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!selectedMonkIdLocal) {
@@ -311,64 +345,109 @@ export const HealthEntryView: React.FC = () => {
       return;
     }
 
-    const payload = {
-      monkId: selectedMonkIdLocal,
-      templeId,
-      year: Number(year),
-      checkDate,
-      healthServiceUnit: healthServiceUnit || 'หน่วยบริการสุขภาพ',
+    try {
+      setIsSaving(true);
+      setSaveError(null);
 
-      // Results (null if not entered - never 0 for empty)
-      weight: weight.trim() !== '' ? parseFloat(weight) : null,
-      height: height.trim() !== '' ? parseFloat(height) : null,
-      bmi: computedBmi,
-      waist: waist.trim() !== '' ? parseFloat(waist) : null,
-      systolic: systolic.trim() !== '' ? parseFloat(systolic) : null,
-      diastolic: diastolic.trim() !== '' ? parseFloat(diastolic) : null,
-      bloodSugar: bloodSugar.trim() !== '' ? parseFloat(bloodSugar) : null,
-      cholesterol: cholesterol.trim() !== '' ? parseFloat(cholesterol) : null,
-      triglyceride: triglyceride.trim() !== '' ? parseFloat(triglyceride) : null,
-      hdl: hdl.trim() !== '' ? parseFloat(hdl) : null,
-      ldl: ldl.trim() !== '' ? parseFloat(ldl) : null,
-      creatinine: creatinine.trim() !== '' ? parseFloat(creatinine) : null,
-      egfr: egfr.trim() !== '' ? parseFloat(egfr) : null,
-      uricAcid: uricAcid.trim() !== '' ? parseFloat(uricAcid) : null,
+      // 4. temple_admin must force:
+      // payload.templeId = currentUser.templeId
+      // Never use temples[0], fallback IDs, or a stale selected temple.
+      let effectiveTempleId = currentMonk?.templeId || templeId || '';
+      if (currentUser?.role === 'temple_admin') {
+        if (!currentUser.templeId) {
+          throw new Error('ไม่พบรหัสวัดของผู้ดูแลวัด (currentUser.templeId is missing)');
+        }
+        effectiveTempleId = currentUser.templeId;
+      }
 
-      hasChronicDisease,
-      chronicDiseases,
-      otherChronicDisease: hasChronicDisease === 'has' ? otherChronicDisease : undefined,
+      // 3. Before saving, verify and log temporarily:
+      console.log("currentUser.templeId", currentUser?.templeId);
+      console.log("monk.templeId", currentMonk?.templeId);
+      console.log("payload.templeId", effectiveTempleId);
+      console.log("monkId", selectedMonkIdLocal);
+      console.log("year", Number(year));
 
-      sweetFood,
-      fattyFood,
-      saltyFood,
-      spicyFood,
-      exerciseTypes,
-      exerciseDaysPerWeek,
-      meditationDaysPerWeek,
-      meditationDuration,
-      smokingStatus,
-      cigarettesPerDay: smokingStatus === 'smoking' && cigarettesPerDay ? Number(cigarettesPerDay) : null,
-      sleepHours,
-      sleepQuality,
-      fruitVegetableFrequency,
+      const currentTemple = temples.find((t) => t.id === effectiveTempleId);
 
-      healthStatus,
-      followUpRequired,
-      recommendation: recommendation.trim() || undefined,
-    };
+      const payload = {
+        monkId: selectedMonkIdLocal,
+        templeId: effectiveTempleId,
+        year: Number(year),
+        checkDate,
+        healthServiceUnit: healthServiceUnit || currentTemple?.healthServiceUnit || 'หน่วยบริการสุขภาพ',
 
-    addHealthCheck(payload);
+        // Results (null if not entered - never 0 for empty, never undefined)
+        weight: weight.trim() !== '' ? parseFloat(weight) : null,
+        height: height.trim() !== '' ? parseFloat(height) : null,
+        bmi: computedBmi,
+        waist: waist.trim() !== '' ? parseFloat(waist) : null,
+        systolic: systolic.trim() !== '' ? parseFloat(systolic) : null,
+        diastolic: diastolic.trim() !== '' ? parseFloat(diastolic) : null,
+        bloodSugar: bloodSugar.trim() !== '' ? parseFloat(bloodSugar) : null,
+        cholesterol: cholesterol.trim() !== '' ? parseFloat(cholesterol) : null,
+        triglyceride: triglyceride.trim() !== '' ? parseFloat(triglyceride) : null,
+        hdl: hdl.trim() !== '' ? parseFloat(hdl) : null,
+        ldl: ldl.trim() !== '' ? parseFloat(ldl) : null,
+        creatinine: creatinine.trim() !== '' ? parseFloat(creatinine) : null,
+        egfr: egfr.trim() !== '' ? parseFloat(egfr) : null,
+        uricAcid: uricAcid.trim() !== '' ? parseFloat(uricAcid) : null,
 
-    if (currentMonk) {
-      setSavedMonkInfo({
-        id: currentMonk.id,
-        name: currentMonk.name,
-        monkName: currentMonk.monkName,
-      });
+        hasChronicDisease,
+        chronicDiseases,
+        otherChronicDisease: hasChronicDisease === 'has' && otherChronicDisease.trim() ? otherChronicDisease.trim() : null,
+
+        sweetFood,
+        fattyFood,
+        saltyFood,
+        spicyFood,
+        exerciseTypes,
+        exerciseDaysPerWeek: Number(exerciseDaysPerWeek) || 0,
+        meditationDaysPerWeek: Number(meditationDaysPerWeek) || 0,
+        meditationDuration,
+        smokingStatus,
+        cigarettesPerDay: smokingStatus === 'smoking' && cigarettesPerDay.trim() !== '' ? Number(cigarettesPerDay) : null,
+        sleepHours,
+        sleepQuality,
+        fruitVegetableFrequency,
+
+        healthStatus,
+        followUpRequired,
+        recommendation: recommendation.trim() || null,
+
+        templeName: currentTemple?.name || '',
+        province: currentTemple?.province || currentMonk?.province || '',
+        region: currentTemple?.region || 'กลาง',
+      };
+
+      await addHealthCheck(payload);
+      await refreshHealthChecks();
+
+      if (currentMonk) {
+        setSavedMonkInfo({
+          id: currentMonk.id,
+          name: currentMonk.name,
+          monkName: currentMonk.monkName,
+        });
+      }
+
+      setSaveSuccess(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err: any) {
+      if (err?.code === 'permission-denied' || String(err?.message || '').includes('permission')) {
+        console.error('[PermissionDenied] setDoc create/update operation failed in HealthEntryView:', {
+          monkId: selectedMonkIdLocal,
+          year: Number(year),
+          currentUserRole: currentUser?.role,
+          currentUserTempleId: currentUser?.templeId,
+          error: err,
+        });
+      } else {
+        console.error('Error saving health check:', err);
+      }
+      setSaveError(err?.message || 'เกิดข้อผิดพลาดในการบันทึกข้อมูลสุขภาพ');
+    } finally {
+      setIsSaving(false);
     }
-
-    setSaveSuccess(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleNextMonk = () => {
@@ -473,6 +552,9 @@ export const HealthEntryView: React.FC = () => {
                 className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-sm text-stone-800 font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none disabled:bg-stone-100"
                 required
               >
+                {currentUser?.role !== 'temple_admin' && (
+                  <option value="">-- กรุณาเลือกวัด --</option>
+                )}
                 {temples.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name} ({t.province})
@@ -493,9 +575,11 @@ export const HealthEntryView: React.FC = () => {
                 className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-sm font-bold text-stone-800 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
                 required
               >
-                <option value={2569}>พ.ศ. 2569 (ปีล่าสุด)</option>
-                <option value={2568}>พ.ศ. 2568</option>
-                <option value={2567}>พ.ศ. 2567</option>
+                {yearOptions.map((yr) => (
+                  <option key={yr} value={yr}>
+                    {formatBuddhistYearLabel(yr)}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -1381,15 +1465,30 @@ export const HealthEntryView: React.FC = () => {
           <div className="pt-4 border-t border-stone-100 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="text-xs text-stone-500">
               * ข้อมูลจะถูกจัดเก็บเข้าสู่ฐานข้อมูลและอัปเดต Dashboard ทันที
+              {saveError && (
+                <div className="text-rose-600 font-medium mt-1">
+                  {saveError}
+                </div>
+              )}
             </div>
 
             <button
               id="save-health-check-btn"
               type="submit"
-              className="w-full sm:w-auto px-8 py-3.5 bg-emerald-800 hover:bg-emerald-900 text-white font-bold rounded-xl text-base shadow-md hover:shadow-lg transition-all hover:scale-[1.01] cursor-pointer font-heading flex items-center justify-center gap-2"
+              disabled={isSaving}
+              className="w-full sm:w-auto px-8 py-3.5 bg-emerald-800 hover:bg-emerald-900 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl text-base shadow-md hover:shadow-lg transition-all hover:scale-[1.01] cursor-pointer font-heading flex items-center justify-center gap-2"
             >
-              <CheckCircle2 className="w-5 h-5 text-amber-300" />
-              <span>บันทึกข้อมูลสุขภาพ</span>
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin text-amber-300" />
+                  <span>กำลังบันทึกข้อมูล...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-5 h-5 text-amber-300" />
+                  <span>บันทึกข้อมูลสุขภาพ</span>
+                </>
+              )}
             </button>
           </div>
         </div>

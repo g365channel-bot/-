@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
+import { currentBuddhistYear } from '../utils/buddhistYear';
 import {
   ArrowLeft,
   Calendar,
@@ -140,7 +141,7 @@ export const MonkDetailView: React.FC = () => {
     setPrefillHealthEntry({
       monkId: monk.id,
       templeId: monk.templeId,
-      year: 2569,
+      year: currentBuddhistYear,
     });
     setActiveTab('health_entry');
   };

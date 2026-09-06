@@ -1,6 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import {
+  currentBuddhistYear,
+  getFilterYearOptions,
+  formatBuddhistYearLabel,
+} from '../utils/buddhistYear';
+import {
   GitCompare,
   TrendingDown,
   TrendingUp,
@@ -29,8 +34,12 @@ import { HealthCheck, Monk } from '../types';
 export const YearlyComparisonView: React.FC = () => {
   const { currentUser, temples, monks, healthChecks } = useApp();
 
-  const [baseYear, setBaseYear] = useState<number>(2568);
-  const [targetYear, setTargetYear] = useState<number>(2569);
+  const [baseYear, setBaseYear] = useState<number>(currentBuddhistYear - 1);
+  const [targetYear, setTargetYear] = useState<number>(currentBuddhistYear);
+  const availableYears = useMemo(
+    () => getFilterYearOptions(healthChecks.map((hc) => hc.year)),
+    [healthChecks]
+  );
   const [selectedTempleId, setSelectedTempleId] = useState<string>(() => {
     if (currentUser?.role === 'temple_admin' && currentUser.templeId) {
       return currentUser.templeId;
@@ -238,8 +247,11 @@ export const YearlyComparisonView: React.FC = () => {
               onChange={(e) => setBaseYear(Number(e.target.value))}
               className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-xs font-bold text-stone-800 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
             >
-              <option value={2567}>พ.ศ. 2567</option>
-              <option value={2568}>พ.ศ. 2568</option>
+              {availableYears.map((yr) => (
+                <option key={yr} value={yr}>
+                  {formatBuddhistYearLabel(yr)}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -254,8 +266,11 @@ export const YearlyComparisonView: React.FC = () => {
               onChange={(e) => setTargetYear(Number(e.target.value))}
               className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-xs font-bold text-stone-800 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
             >
-              <option value={2568}>พ.ศ. 2568</option>
-              <option value={2569}>พ.ศ. 2569</option>
+              {availableYears.map((yr) => (
+                <option key={yr} value={yr}>
+                  {formatBuddhistYearLabel(yr)}
+                </option>
+              ))}
             </select>
           </div>
 

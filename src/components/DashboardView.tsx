@@ -1,6 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import {
+  currentBuddhistYear,
+  getFilterYearOptions,
+  formatBuddhistYearLabel,
+} from '../utils/buddhistYear';
+import {
   Building2,
   Users,
   CheckCircle,
@@ -40,7 +45,11 @@ export const DashboardView: React.FC = () => {
   } = useApp();
 
   // Filters
-  const [selectedYear, setSelectedYear] = useState<number>(2569);
+  const [selectedYear, setSelectedYear] = useState<number>(currentBuddhistYear);
+  const availableYears = useMemo(
+    () => getFilterYearOptions(healthChecks.map((hc) => hc.year)),
+    [healthChecks]
+  );
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [selectedProvince, setSelectedProvince] = useState<string>('all');
   const [selectedTempleId, setSelectedTempleId] = useState<string>(() => {
@@ -174,12 +183,16 @@ export const DashboardView: React.FC = () => {
     ];
   }, [yearChecks, checkedMonksCount]);
 
-  // Graph 4: Yearly Trend (2567 -> 2568 -> 2569)
+  // Graph 4: Yearly Trend
+  const trendYears = useMemo(() => {
+    const endYear = selectedYear || currentBuddhistYear;
+    return [endYear - 2, endYear - 1, endYear];
+  }, [selectedYear]);
+
   const yearlyTrendData = useMemo(() => {
     const monkIds = new Set(filteredMonks.map((m) => m.id));
-    const allYears = [2567, 2568, 2569];
 
-    return allYears.map((yr) => {
+    return trendYears.map((yr) => {
       const checks = healthChecks.filter((hc) => hc.year === yr && monkIds.has(hc.monkId));
       const total = checks.length;
       if (total === 0) {
@@ -230,7 +243,7 @@ export const DashboardView: React.FC = () => {
   const handleStartEntry = () => {
     setPrefillHealthEntry({
       year: selectedYear,
-      templeId: selectedTempleId !== 'all' ? selectedTempleId : temples[0]?.id,
+      templeId: selectedTempleId !== 'all' ? selectedTempleId : (currentUser?.role === 'temple_admin' ? currentUser.templeId : undefined),
     });
     setActiveTab('health_entry');
   };
@@ -285,9 +298,11 @@ export const DashboardView: React.FC = () => {
               onChange={(e) => setSelectedYear(Number(e.target.value))}
               className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-2 text-sm font-semibold text-stone-800 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
             >
-              <option value={2569}>พ.ศ. 2569 (ปีล่าสุด)</option>
-              <option value={2568}>พ.ศ. 2568</option>
-              <option value={2567}>พ.ศ. 2567</option>
+              {availableYears.map((yr) => (
+                <option key={yr} value={yr}>
+                  {formatBuddhistYearLabel(yr)}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -695,7 +710,7 @@ export const DashboardView: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
             <div>
               <h3 className="text-base font-bold font-heading text-stone-900">
-                กราฟที่ 4: แนวโน้มรายปี (2567 → 2568 → 2569)
+                กราฟที่ 4: แนวโน้มรายปี ({trendYears.join(' → ')})
               </h3>
               <p className="text-xs text-stone-500">
                 เปรียบเทียบพัฒนาการตามตัวชี้วัดสุขภาพ
