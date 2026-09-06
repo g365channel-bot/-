@@ -1,0 +1,244 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==========================================
+    // HELPER FUNCTIONS
+    // ==========================================
+
+    // Check if request is authenticated
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Check if user document exists in /users collection
+    function userDocExists() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // Retrieve user document data for the current authenticated user
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Check if current user has the super_admin role
+    function isSuperAdmin() {
+      return userDocExists() && getUserData().get('role', '') == 'super_admin';
+    }
+
+    // Check if current user is an active/approved temple_admin
+    function isTempleAdmin() {
+      return userDocExists() &&
+        getUserData().get('role', '') == 'temple_admin' &&
+        getUserData().get('status', '') == 'approved';
+    }
+
+    // Get the templeId assigned to the current temple_admin
+    function userTempleId() {
+      return getUserData().get('templeId', '');
+    }
+
+    // Check if current user is a region_admin with an assigned region
+    function isRegionAdmin() {
+      return userDocExists() &&
+        getUserData().get('role', '') == 'region_admin' &&
+        getUserData().get('assignedRegion', null) != null;
+    }
+
+    // Get the assigned region of the current region_admin
+    function userAssignedRegion() {
+      return getUserData().assignedRegion;
+    }
+
+    // Helper to check if a referenced temple document exists
+    function templeExists(templeId) {
+      return exists(/databases/$(database)/documents/temples/$(templeId));
+    }
+
+    // Helper to fetch referenced temple data
+    function getTempleData(templeId) {
+      return get(/databases/$(database)/documents/temples/$(templeId)).data;
+    }
+
+    // Validation helper for region_admin creating a monk:
+    // 1. request.resource.data.region9 == userAssignedRegion()
+    // 2. request.resource.data.templeId exists and is string
+    // 3. referenced temples/{templeId} exists
+    // 4. referenced temple.region9 == userAssignedRegion()
+    // 5. referenced temple.status == 'approved'
+    function isValidRegionAdminMonkCreate() {
+      return isRegionAdmin() &&
+        request.resource.data.get('region9', '') == userAssignedRegion() &&
+        'templeId' in request.resource.data &&
+        request.resource.data.templeId is string &&
+        templeExists(request.resource.data.templeId) &&
+        getTempleData(request.resource.data.templeId).get('region9', '') == userAssignedRegion() &&
+        getTempleData(request.resource.data.templeId).get('status', '') == 'approved';
+    }
+
+    // Validation helper for region_admin updating a monk:
+    // 1. existing resource.data.region9 == userAssignedRegion()
+    // 2. new request.resource.data.region9 == userAssignedRegion()
+    // 3. new request.resource.data.templeId exists and is string
+    // 4. referenced target temple exists
+    // 5. target temple.region9 == userAssignedRegion()
+    // 6. target temple.status == 'approved'
+    function isValidRegionAdminMonkUpdate() {
+      return isRegionAdmin() &&
+        resource.data.get('region9', '') == userAssignedRegion() &&
+        request.resource.data.get('region9', '') == userAssignedRegion() &&
+        'templeId' in request.resource.data &&
+        request.resource.data.templeId is string &&
+        templeExists(request.resource.data.templeId) &&
+        getTempleData(request.resource.data.templeId).get('region9', '') == userAssignedRegion() &&
+        getTempleData(request.resource.data.templeId).get('status', '') == 'approved';
+    }
+
+    // ==========================================
+    // USERS COLLECTION
+    // ==========================================
+    match /users/{userId} {
+      // 1. super_admin has full read access
+      // 2. Self-read: authenticated user can read their own user document
+      //    (critical for role & assignedRegion hydration in AppContext)
+      allow read: if isSuperAdmin() || (isSignedIn() && request.auth.uid == userId);
+
+      // 1. super_admin can create user documents
+      // 2. Self-registration for new temple_admin with pending status
+      allow create: if isSuperAdmin() || (
+        isSignedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.get('role', '') == 'temple_admin' &&
+        request.resource.data.get('status', '') == 'pending'
+      );
+
+      // 1. super_admin can update user accounts (approvals, role management)
+      // 2. Self-update: allow updating personal details without privilege escalation
+      //    (role, status, and assignedRegion must remain unchanged)
+      allow update: if isSuperAdmin() || (
+        isSignedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.get('role', '') == resource.data.get('role', '') &&
+        request.resource.data.get('status', '') == resource.data.get('status', '') &&
+        request.resource.data.get('assignedRegion', null) == resource.data.get('assignedRegion', null)
+      );
+
+      // Only super_admin can delete users
+      allow delete: if isSuperAdmin();
+    }
+
+    // ==========================================
+    // TEMPLES COLLECTION
+    // ==========================================
+    match /temples/{templeId} {
+      // READ permissions:
+      // - super_admin: all temples
+      // - temple_admin: all approved temples, or their own assigned temple
+      // - region_admin: only approved temples within their assignedRegion
+      allow read: if isSuperAdmin() ||
+        (isTempleAdmin() && (resource.data.get('status', '') == 'approved' || templeId == userTempleId())) ||
+        (isRegionAdmin() && resource.data.get('status', '') == 'approved' && resource.data.get('region9', '') == userAssignedRegion());
+
+      // CREATE permissions:
+      // - super_admin: can create any temple
+      // - registration: pending temple registration created by user during signup
+      // - region_admin: DENIED (cannot create temples)
+      allow create: if isSuperAdmin() || (
+        isSignedIn() &&
+        templeId == request.auth.uid &&
+        request.resource.data.get('createdBy', '') == request.auth.uid &&
+        request.resource.data.get('status', '') == 'pending'
+      );
+
+      // UPDATE permissions:
+      // - super_admin: full update (including approvals)
+      // - temple_admin: own temple only (status cannot be self-approved)
+      // - region_admin: DENIED (cannot update temples or approve registrations)
+      allow update: if isSuperAdmin() || (
+        isTempleAdmin() &&
+        templeId == userTempleId() &&
+        request.resource.data.get('status', '') == resource.data.get('status', '')
+      );
+
+      // DELETE permissions:
+      // - Only super_admin can delete temples
+      // - region_admin: DENIED
+      allow delete: if isSuperAdmin();
+    }
+
+    // ==========================================
+    // MONKS COLLECTION
+    // ==========================================
+    match /monks/{monkId} {
+      // READ permissions:
+      // - super_admin: all monks
+      // - temple_admin: only monks belonging to their temple
+      // - region_admin: only monks within their assignedRegion
+      allow read: if isSuperAdmin() ||
+        (isTempleAdmin() && resource.data.get('templeId', '') == userTempleId()) ||
+        (isRegionAdmin() && resource.data.get('region9', '') == userAssignedRegion());
+
+      // CREATE permissions:
+      // - super_admin: can create any monk
+      // - temple_admin: monks for their own temple
+      // - region_admin: monks for temples in assignedRegion with strict dual validation
+      allow create: if isSuperAdmin() ||
+        (isTempleAdmin() && request.resource.data.get('templeId', '') == userTempleId()) ||
+        isValidRegionAdminMonkCreate();
+
+      // UPDATE permissions:
+      // - super_admin: can update any monk
+      // - temple_admin: monks belonging to their temple (templeId must remain unchanged)
+      // - region_admin: monks within assignedRegion, target temple must also be in assignedRegion
+      allow update: if isSuperAdmin() ||
+        (isTempleAdmin() && resource.data.get('templeId', '') == userTempleId() && request.resource.data.get('templeId', '') == userTempleId()) ||
+        isValidRegionAdminMonkUpdate();
+
+      // DELETE permissions:
+      // - super_admin: can delete
+      // - temple_admin: DENIED (permanent delete locked to super_admin only)
+      // - region_admin: DENIED
+      allow delete: if isSuperAdmin();
+    }
+
+    // ==========================================
+    // HEALTHCHECKS COLLECTION
+    // ==========================================
+    match /healthChecks/{checkId} {
+      // READ permissions:
+      // - super_admin: all health checks
+      // - temple_admin: health checks belonging to their temple
+      // - region_admin: health checks within their assignedRegion
+      allow read: if isSuperAdmin() ||
+        (isTempleAdmin() && resource.data.get('templeId', '') == userTempleId()) ||
+        (isRegionAdmin() && resource.data.get('region9', '') == userAssignedRegion());
+
+      // CREATE permissions:
+      // - super_admin: can create any health check
+      // - temple_admin: health checks for their own temple
+      // - region_admin: DENIED for V1
+      allow create: if isSuperAdmin() ||
+        (isTempleAdmin() && request.resource.data.get('templeId', '') == userTempleId());
+
+      // UPDATE permissions:
+      // - super_admin: can update
+      // - temple_admin: own temple health checks only
+      // - region_admin: DENIED for V1
+      allow update: if isSuperAdmin() ||
+        (isTempleAdmin() && resource.data.get('templeId', '') == userTempleId() && request.resource.data.get('templeId', '') == userTempleId());
+
+      // DELETE permissions:
+      // - super_admin: can delete
+      // - temple_admin: DENIED (permanent delete locked to super_admin only)
+      // - region_admin: DENIED for V1
+      allow delete: if isSuperAdmin();
+    }
+
+    // ==========================================
+    // DEFAULT CATCH-ALL
+    // ==========================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import {
   ShieldCheck,
   Building2,
+  Compass,
   LogOut,
   RotateCcw,
   Menu,
@@ -27,6 +28,48 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const { currentUser, logout, resetToDefaultData, setActiveTab } = useApp();
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  // Explicit badge configuration for all 3 roles (super_admin, region_admin, temple_admin)
+  const getRoleBadgeConfig = () => {
+    if (!currentUser) return null;
+
+    if (currentUser.role === 'super_admin') {
+      return {
+        icon: <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-300 shrink-0" />,
+        badgeClass: 'bg-amber-500/20 border-amber-400/50 text-amber-200',
+        title: 'ผู้ดูแลระบบ (Super Admin)',
+        desktopLabel: 'ผู้ดูแลระบบ (ส่วนกลาง)',
+        mobileLabel: 'แอดมินกลาง',
+        topPillLabel: 'Super Admin',
+      };
+    }
+
+    if (currentUser.role === 'region_admin') {
+      const regionTitle = currentUser.assignedRegion
+        ? `ผู้ดูแลภาค ${currentUser.assignedRegion}`
+        : 'ผู้ดูแลภาค';
+      return {
+        icon: <Compass className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-300 shrink-0" />,
+        badgeClass: 'bg-sky-500/20 border-sky-400/50 text-sky-100',
+        title: regionTitle,
+        desktopLabel: regionTitle,
+        mobileLabel: currentUser.assignedRegion || 'ผู้ดูแลภาค',
+        topPillLabel: currentUser.assignedRegion || 'ผู้ดูแลภาค',
+      };
+    }
+
+    // Default to temple_admin
+    return {
+      icon: <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-300 shrink-0" />,
+      badgeClass: 'bg-emerald-700/70 border-emerald-500/50 text-emerald-100',
+      title: currentUser.templeName || 'ผู้ใช้งานประจำวัด',
+      desktopLabel: currentUser.templeName || 'ผู้ใช้งานประจำวัด',
+      mobileLabel: 'ประจำวัด',
+      topPillLabel: currentUser.templeName?.slice(0, 10) || 'วัด',
+    };
+  };
+
+  const roleConfig = getRoleBadgeConfig();
 
   const handleOpenLogin = () => {
     if (onOpenLoginModal) {
@@ -84,36 +127,30 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             {/* Mobile-only quick role pill on top row for compactness */}
-            <div className="sm:hidden shrink-0">
-              <span className="text-[10px] font-semibold bg-emerald-900/60 border border-emerald-700/60 text-emerald-200 px-2 py-0.5 rounded-full">
-                {currentUser?.role === 'super_admin' ? 'Super Admin' : (currentUser?.templeName?.slice(0, 10) || 'วัด')}
-              </span>
-            </div>
+            {roleConfig && (
+              <div className="sm:hidden shrink-0">
+                <span className="text-[10px] font-semibold bg-emerald-900/60 border border-emerald-700/60 text-emerald-200 px-2 py-0.5 rounded-full">
+                  {roleConfig.topPillLabel}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Bottom on Mobile / Right on Tablet & Desktop: Actions */}
           <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-2.5 pt-1.5 sm:pt-0 border-t border-emerald-700/40 sm:border-t-0 shrink-0">
             {/* Current Role Badge (read-only) */}
-            {currentUser && (
+            {roleConfig && (
               <div
                 id="user-role-badge"
-                className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-medium border shadow-xs ${
-                  currentUser.role === 'super_admin'
-                    ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
-                    : 'bg-emerald-700/70 border-emerald-500/50 text-emerald-100'
-                }`}
-                title={currentUser.role === 'super_admin' ? 'ผู้ดูแลระบบ (Super Admin)' : currentUser.templeName || 'ผู้ใช้งานประจำวัด'}
+                className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-medium border shadow-xs ${roleConfig.badgeClass}`}
+                title={roleConfig.title}
               >
-                {currentUser.role === 'super_admin' ? (
-                  <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-300 shrink-0" />
-                ) : (
-                  <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-300 shrink-0" />
-                )}
-                <span className="hidden md:inline font-semibold max-w-[140px] lg:max-w-[200px] truncate">
-                  {currentUser.role === 'super_admin' ? 'ผู้ดูแลระบบ (ส่วนกลาง)' : currentUser.templeName || 'ผู้ใช้งานประจำวัด'}
+                {roleConfig.icon}
+                <span className="hidden md:inline font-semibold max-w-[150px] lg:max-w-[220px] truncate">
+                  {roleConfig.desktopLabel}
                 </span>
                 <span className="md:hidden font-semibold">
-                  {currentUser.role === 'super_admin' ? 'แอดมินกลาง' : 'ประจำวัด'}
+                  {roleConfig.mobileLabel}
                 </span>
               </div>
             )}

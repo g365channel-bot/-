@@ -36,13 +36,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
       sublabel: 'ภาพรวมสถานะและสถิติสุขภาพ',
       icon: LayoutDashboard,
     },
-    {
-      id: 'health_entry' as ActiveTab,
-      label: 'กรอกข้อมูลสุขภาพ',
-      sublabel: 'บันทึกผลตรวจประจำปี',
-      icon: ClipboardPenLine,
-      highlight: true,
-    },
+    // Hide health_entry for region_admin (read-only for health in V1)
+    ...(currentUser?.role !== 'region_admin'
+      ? [
+          {
+            id: 'health_entry' as ActiveTab,
+            label: 'กรอกข้อมูลสุขภาพ',
+            sublabel: 'บันทึกผลตรวจประจำปี',
+            icon: ClipboardPenLine,
+            highlight: true,
+          },
+        ]
+      : []),
     {
       id: 'monk_list' as ActiveTab,
       label: 'รายชื่อพระสงฆ์',

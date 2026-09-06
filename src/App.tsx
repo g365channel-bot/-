@@ -19,7 +19,7 @@ import { TempleManagementView } from './components/TempleManagementView';
 import { HeartPulse, Loader2, Lock, Building2 } from 'lucide-react';
 
 const MainContent: React.FC = () => {
-  const { activeTab, currentUser, isAuthLoading } = useApp();
+  const { activeTab, setActiveTab, currentUser, isAuthLoading } = useApp();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginModalMode, setLoginModalMode] = useState<'login' | 'register'>('login');
@@ -31,6 +31,16 @@ const MainContent: React.FC = () => {
       setIsLoginModalOpen(true);
     }
   }, [isAuthLoading, currentUser]);
+
+  // Route / Render guard: If region_admin reaches a disallowed tab (health_entry, temple_management),
+  // immediately redirect active tab to dashboard
+  useEffect(() => {
+    if (currentUser?.role === 'region_admin') {
+      if (activeTab === 'health_entry' || activeTab === 'temple_management') {
+        setActiveTab('dashboard');
+      }
+    }
+  }, [currentUser?.role, activeTab, setActiveTab]);
 
   // Requirement 9: Auth loading state to prevent flickering protected content
   if (isAuthLoading) {
@@ -69,7 +79,7 @@ const MainContent: React.FC = () => {
           {/* Dynamic Main Workspace */}
           <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto min-w-0">
             {activeTab === 'dashboard' && <DashboardView />}
-            {activeTab === 'health_entry' && <HealthEntryView />}
+            {activeTab === 'health_entry' && currentUser.role !== 'region_admin' && <HealthEntryView />}
             {activeTab === 'monk_list' && <MonkListView />}
             {activeTab === 'monk_detail' && <MonkDetailView />}
             {activeTab === 'yearly_comparison' && <YearlyComparisonView />}

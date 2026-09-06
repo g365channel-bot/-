@@ -236,6 +236,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 email: userData.email || firebaseUser.email || '',
                 name: userData.name || userData.displayName || 'ผู้ใช้งาน',
                 role: (userData.role as UserRole) || 'temple_admin',
+                assignedRegion: userData.assignedRegion,
                 templeId: userData.templeId,
                 templeName: userData.templeName,
               };
@@ -259,6 +260,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   email: retryData.email || firebaseUser.email || '',
                   name: retryData.name || retryData.displayName || 'ผู้ใช้งาน',
                   role: (retryData.role as UserRole) || 'temple_admin',
+                  assignedRegion: retryData.assignedRegion,
                   templeId: retryData.templeId,
                   templeName: retryData.templeName,
                 };
@@ -313,6 +315,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           list.push(mapDocToTemple(snap.id, snap.data()));
         });
         setTemples(list);
+      } else if (user.role === 'region_admin') {
+        if (!user.assignedRegion) {
+          console.warn('[fetchTemplesForUser] Missing assignedRegion for region_admin:', user.id);
+          setTemples([]);
+          return;
+        }
+        const q = query(
+          collection(db, 'temples'),
+          where('status', '==', 'approved'),
+          where('region9', '==', user.assignedRegion)
+        );
+        const querySnapshot = await getDocs(q);
+        const list: Temple[] = [];
+        querySnapshot.forEach((snap) => {
+          list.push(mapDocToTemple(snap.id, snap.data()));
+        });
+        setTemples(list);
       } else if (user.role === 'temple_admin') {
         if (!user.templeId) {
           setTemples([]);
@@ -357,6 +376,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (user.role === 'super_admin') {
         const monksRef = collection(db, 'monks');
         const querySnapshot = await getDocs(monksRef);
+        const list: Monk[] = [];
+        querySnapshot.forEach((snap) => {
+          list.push(mapDocToMonk(snap.id, snap.data()));
+        });
+        setMonks(list);
+      } else if (user.role === 'region_admin') {
+        if (!user.assignedRegion) {
+          console.warn('[fetchMonksForUser] Missing assignedRegion for region_admin:', user.id);
+          setMonks([]);
+          return;
+        }
+        const q = query(
+          collection(db, 'monks'),
+          where('region9', '==', user.assignedRegion)
+        );
+        const querySnapshot = await getDocs(q);
         const list: Monk[] = [];
         querySnapshot.forEach((snap) => {
           list.push(mapDocToMonk(snap.id, snap.data()));
@@ -415,6 +450,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           list.push(mapDocToHealthCheck(snap.id, snap.data()));
         });
         setHealthChecks(list);
+      } else if (user.role === 'region_admin') {
+        if (!user.assignedRegion) {
+          console.warn('[fetchHealthChecksForUser] Missing assignedRegion for region_admin:', user.id);
+          setHealthChecks([]);
+          return;
+        }
+        const q = query(
+          collection(db, 'healthChecks'),
+          where('region9', '==', user.assignedRegion)
+        );
+        const querySnapshot = await getDocs(q);
+        const list: HealthCheck[] = [];
+        querySnapshot.forEach((snap) => {
+          list.push(mapDocToHealthCheck(snap.id, snap.data()));
+        });
+        setHealthChecks(list);
       } else if (user.role === 'temple_admin') {
         if (!user.templeId) {
           setHealthChecks([]);
@@ -467,7 +518,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsHealthChecksLoading(false);
       setHealthChecksError(null);
     }
-  }, [currentUser?.id, currentUser?.role, currentUser?.templeId]);
+  }, [currentUser?.id, currentUser?.role, currentUser?.templeId, currentUser?.assignedRegion]);
 
   const refreshTemples = async () => {
     await fetchTemplesForUser(currentUser);
